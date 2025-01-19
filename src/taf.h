@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <stddef.h>  // 使用 C 标准库头文件
 #include "constants.h"
 #include "remainder.h"
 
@@ -49,6 +50,7 @@ typedef struct taf_t {
 void taf_init(TAF *filter, size_t n, int seed);
 void taf_destroy(TAF* filter);
 int taf_lookup(TAF *filter, elt_t elt);
+int taf_lookup_withoutAdp(TAF *filter, elt_t elt);
 void taf_insert(TAF *filter, elt_t elt);
 void taf_clear(TAF* filter);
 
@@ -57,9 +59,10 @@ double taf_load(TAF *filter);
 void print_taf(TAF* filter);
 void print_taf_metadata(TAF* filter);
 void print_taf_block(TAF* filter, size_t block_index);
-
+void print_taf_stats(TAF* filter);
 #ifdef __cplusplus
 }
 #endif
 
 #endif //TAF_H
+

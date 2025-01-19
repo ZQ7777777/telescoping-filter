@@ -13,6 +13,7 @@
 #include "bit_util.h"
 #include "set.h"
 
+
 /**
  * Generate a hash for the input word.
  * Returns the full 128 bit murmurhash.
@@ -256,8 +257,8 @@ static void shift_sels(TAF* filter, int a, int b) {
     set_sel_code(filter, a/64, code);
   } else {
     // a and b+1 in different blocks
-    int* sels = malloc(64 * sizeof(int));
-    int* prev_sels = malloc(64 * sizeof(int));
+    int* sels = (int*)malloc(64 * sizeof(int));
+    int* prev_sels = (int*)malloc(64 * sizeof(int));
     // (1) last block
     int block_i = (b+1)/64;
     decode_sel(get_sel_code(filter, block_i), sels);
@@ -347,7 +348,7 @@ static void inc_offsets_for_new_run(TAF* filter, size_t quot, size_t loc) {
 
 static void add_block(TAF *filter) {
   // Add block to new_blocks
-  TAFBlock *new_blocks = realloc(filter->blocks, (filter->nblocks + 1) * sizeof(TAFBlock));
+  TAFBlock *new_blocks = (TAFBlock *)realloc(filter->blocks, (filter->nblocks + 1) * sizeof(TAFBlock));
   if (new_blocks == NULL) {
     printf("add_block failed to realloc new blocks\n");
     exit(1);
@@ -356,7 +357,7 @@ static void add_block(TAF *filter) {
   memset(filter->blocks + filter->nblocks, 0, sizeof(TAFBlock));
 
   // Reallocate remote rep
-  Remote_elt *new_remote = realloc(filter->remote,(filter->nslots + 64) * sizeof(Remote_elt));
+  Remote_elt *new_remote = (Remote_elt *)realloc(filter->remote,(filter->nslots + 64) * sizeof(Remote_elt));
   if (new_remote == NULL) {
     printf("add_block failed to realloc new remote rep\n");
     exit(1);
@@ -449,8 +450,8 @@ void taf_init(TAF *filter, size_t n, int seed) {
   filter->q = (size_t)log2((double)filter->nslots); // nslots = 2^q
   filter->r = REM_SIZE;
   filter->p = filter->q + filter->r;
-  filter->blocks = calloc(filter->nblocks, sizeof(TAFBlock));
-  filter->remote = calloc(filter->nslots, sizeof(Remote_elt));
+  filter->blocks = (TAFBlock *)calloc(filter->nblocks, sizeof(TAFBlock));
+  filter->remote = (Remote_elt *)calloc(filter->nslots, sizeof(Remote_elt));
   filter->mode = TAF_MODE_NORMAL;
 }
 
@@ -464,8 +465,8 @@ void taf_clear(TAF* filter) {
   filter->nelts = 0;
   free(filter->blocks);
   free(filter->remote);
-  filter->blocks = calloc(filter->nblocks, sizeof(TAFBlock));
-  filter->remote = calloc(filter->nslots, sizeof(Remote_elt));
+  filter->blocks = (TAFBlock *)calloc(filter->nblocks, sizeof(TAFBlock));
+  filter->remote = (Remote_elt *)calloc(filter->nslots, sizeof(Remote_elt));
 }
 
 static void raw_insert(TAF* filter, elt_t elt, uint64_t hash) {
@@ -521,6 +522,38 @@ static void raw_insert(TAF* filter, elt_t elt, uint64_t hash) {
     }
   }
 }
+static int raw_lookup_withoutAdp(TAF* filter, elt_t elt, uint64_t hash) {
+  size_t quot = calc_quot(filter, hash);
+
+  if (get_occupied(filter, quot)) {
+    int loc = rank_select(filter, quot);
+    if (loc == RANK_SELECT_EMPTY || loc == RANK_SELECT_OVERFLOW) {
+      return 0;
+    }
+    // Cache decoded selectors
+    int decoded[64];
+    int decoded_i = -1;
+    do {
+      // Refresh cached code
+      if (decoded_i != loc/64) {
+        decoded_i = loc/64;
+        uint64_t code = get_sel_code(filter, loc/64);
+        decode_sel(code, decoded);
+      }
+      int sel = decoded[loc%64];
+      rem_t rem = calc_rem(filter, hash, sel);
+      if (remainder(filter, loc) == rem) {
+        // // Check remote
+        // if (elt != filter->remote[loc].elt) {
+        //   adapt(filter, elt, loc, quot, hash, decoded);
+        // }
+        return 1;
+      }
+      loc--;
+    } while (loc >= (int)quot && !get_runend(filter, loc));
+  }
+  return 0;
+}
 
 static int raw_lookup(TAF* filter, elt_t elt, uint64_t hash) {
   size_t quot = calc_quot(filter, hash);
@@ -565,6 +598,11 @@ static int raw_lookup(TAF* filter, elt_t elt, uint64_t hash) {
 int taf_lookup(TAF *filter, elt_t elt) {
   uint64_t hash = taf_hash(filter, elt);
   return raw_lookup(filter, elt, hash);
+}
+
+int taf_lookup_withoutAdp(TAF *filter, elt_t elt) {
+  uint64_t hash = taf_hash(filter, elt);
+  return raw_lookup_withoutAdp(filter, elt, hash);
 }
 
 void taf_insert(TAF *filter, elt_t elt) {
@@ -650,7 +688,7 @@ void print_taf_stats(TAF* filter) {
 }
 
 // Tests
-//#define TEST_TAF 1
+// #define TEST_TAF 1
 #ifdef TEST_TAF
 
 void print_backtrace() {
@@ -1292,6 +1330,7 @@ void test_template() {
 }
 
 int main() {
+  printf("Running tests...\n");
   test_calc_rem();
   test_add_block();
   test_add_block_no_clobber();
